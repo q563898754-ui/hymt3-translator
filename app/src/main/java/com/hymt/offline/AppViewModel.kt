@@ -50,7 +50,8 @@ data class UiState(
     val message: String? = null,
     val picker: PickerTarget? = null,
     val freeSpaceGb: Double = 0.0,
-    val speechIssue: String? = null
+    val speechIssue: String? = null,
+    val autoSpeak: Boolean = true
 )
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
@@ -65,7 +66,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             sourceLang = prefs.getString(KEY_SOURCE, Languages.AUTO) ?: Languages.AUTO,
             targetLang = prefs.getString(KEY_TARGET, "en") ?: "en",
             history = historyRepo.load(),
-            freeSpaceGb = models.freeSpaceBytes() / 1_000_000_000.0
+            freeSpaceGb = models.freeSpaceBytes() / 1_000_000_000.0,
+            autoSpeak = prefs.getBoolean(KEY_AUTO_SPEAK, true)
         )
     )
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -299,6 +301,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     )
                     val merged = historyRepo.add(_state.value.history, item)
                     _state.update { it.copy(history = merged) }
+                    if (_state.value.autoSpeak) {
+                        speakOutput()
+                    }
                 }
             }.onFailure { e ->
                 _state.update {
@@ -361,6 +366,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         ensureSpeaker().speak(current.output, localeTag)
     }
 
+    /** 对讲机模式的核心开关：译文生成完自动朗读给对方听 */
+    fun toggleAutoSpeak() {
+        val next = !_state.value.autoSpeak
+        prefs.edit().putBoolean(KEY_AUTO_SPEAK, next).apply()
+        _state.update { it.copy(autoSpeak = next) }
+    }
+
     private fun ensureVoice(): VoiceInput = voice ?: VoiceInput(getApplication()).also { input ->
         input.onPartial = { text -> _state.update { it.copy(partial = text) } }
         input.onListeningChanged = { listening ->
@@ -411,6 +423,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         private const val PREFS = "hymt_prefs"
         private const val KEY_SOURCE = "lang_source"
         private const val KEY_TARGET = "lang_target"
+        private const val KEY_AUTO_SPEAK = "auto_speak"
         private const val MAX_NEW_TOKENS = 1024
         private const val REQUIRED_FREE_BYTES = 3_000_000_000L
     }

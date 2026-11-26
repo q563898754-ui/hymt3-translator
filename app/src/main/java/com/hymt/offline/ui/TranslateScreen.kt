@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -68,6 +69,7 @@ fun TranslateScreen(
     onPickTarget: () -> Unit,
     onMic: () -> Unit,
     onSpeak: () -> Unit,
+    onToggleAutoSpeak: () -> Unit,
     onClear: () -> Unit,
     onHistory: (HistoryItem) -> Unit,
     onManageModel: () -> Unit
@@ -127,7 +129,8 @@ fun TranslateScreen(
                                 clipboard.setText(AnnotatedString(state.output))
                             }
                         },
-                        onSpeak = onSpeak
+                        onSpeak = onSpeak,
+                        onToggleAutoSpeak = onToggleAutoSpeak
                     )
                 }
             } else {
@@ -171,7 +174,8 @@ fun TranslateScreen(
                                 clipboard.setText(AnnotatedString(state.output))
                             }
                         },
-                        onSpeak = onSpeak
+                        onSpeak = onSpeak,
+                        onToggleAutoSpeak = onToggleAutoSpeak
                     )
                 }
             }
@@ -360,7 +364,7 @@ private fun SourcePanel(
         ) {
             ActionChip(
                 icon = Icons.Filled.Mic,
-                text = if (state.listening) "停止" else "语音",
+                text = if (state.listening) "停止" else "说话",
                 accent = state.listening,
                 onClick = onMic
             )
@@ -381,7 +385,8 @@ private fun ResultPanel(
     state: UiState,
     modifier: Modifier,
     onCopy: () -> Unit,
-    onSpeak: () -> Unit
+    onSpeak: () -> Unit,
+    onToggleAutoSpeak: () -> Unit
 ) {
     val scroll = rememberScrollState()
     Panel(modifier) {
@@ -424,6 +429,12 @@ private fun ResultPanel(
                 text = "朗读",
                 enabled = state.output.isNotEmpty(),
                 onClick = onSpeak
+            )
+            ActionChip(
+                icon = if (state.autoSpeak) Icons.Filled.VolumeUp else Icons.Filled.VolumeOff,
+                text = if (state.autoSpeak) "自动朗读" else "自动关",
+                accent = state.autoSpeak,
+                onClick = onToggleAutoSpeak
             )
             Spacer(Modifier.weight(1f))
             if (state.translating) BusyDots()

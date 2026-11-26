@@ -126,6 +126,7 @@ private fun RootScreen(vm: AppViewModel) {
                     }
                 },
                 onSpeak = vm::speakOutput,
+                onToggleAutoSpeak = vm::toggleAutoSpeak,
                 onClear = vm::clearSource,
                 onHistory = vm::useHistory,
                 onManageModel = { showModel = true }
