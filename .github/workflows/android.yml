@@ -34,6 +34,13 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      # 固定调试签名：缓存 debug.keystore，保证每次构建签名一致，新版本可直接覆盖安装
+      - name: Restore debug keystore
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: zrc-debug-keystore-v1
+
       - name: Build debug APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
 
