@@ -7,7 +7,7 @@ import java.util.Locale
 /**
  * 译文朗读，使用系统 TTS 引擎。离线可用性取决于设备是否已安装对应语言的语音包。
  */
-class Speaker(context: Context) {
+class Speaker(private val context: Context) {
 
     var onUnavailable: ((String) -> Unit)? = null
 
