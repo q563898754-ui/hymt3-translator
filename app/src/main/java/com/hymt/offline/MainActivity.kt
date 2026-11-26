@@ -1,10 +1,12 @@
 package com.hymt.offline
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -14,6 +16,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -75,6 +80,28 @@ private fun RootScreen(vm: AppViewModel) {
         }
     }
 
+    val speechIssue = state.speechIssue
+    if (speechIssue != null) {
+        AlertDialog(
+            onDismissRequest = vm::dismissSpeechIssue,
+            title = { Text("语音朗读不可用") },
+            text = { Text(speechIssue) },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.dismissSpeechIssue()
+                    openTtsSettings(context)
+                }) {
+                    Text("打开语音设置")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = vm::dismissSpeechIssue) {
+                    Text("知道了")
+                }
+            }
+        )
+    }
+
     Box(Modifier.fillMaxSize()) {
         val ready = state.modelStatus is ModelStatus.Ready
 
@@ -129,4 +156,27 @@ private fun RootScreen(vm: AppViewModel) {
             )
         }
     }
+}
+
+/**
+ * 打开系统「文字转语音」设置。
+ * 各厂商 ROM 的入口不一致，按优先级逐个尝试，全部失败再退回应用设置页。
+ */
+private fun openTtsSettings(context: Context) {
+    val candidates = listOf(
+        Intent("com.android.settings.TTS_SETTINGS"),
+        Intent("com.android.settings.TEXT_TO_SPEECH_SETTINGS"),
+        Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS),
+        Intent(Settings.ACTION_SETTINGS)
+    )
+    for (intent in candidates) {
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val opened = runCatching { context.startActivity(intent) }.isSuccess
+        if (opened) return
+    }
+    Toast.makeText(
+        context,
+        "打不开语音设置，请手动在「设置」里搜索“文字转语音”",
+        Toast.LENGTH_LONG
+    ).show()
 }

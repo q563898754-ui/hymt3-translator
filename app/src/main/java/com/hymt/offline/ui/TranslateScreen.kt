@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -78,12 +78,14 @@ fun TranslateScreen(
             .background(Brush.verticalGradient(listOf(Bg, BgGlow, Bg)))
     ) {
         val wide = maxWidth >= 760.dp
+        // safeDrawing 已经包含输入法高度，这里只做读取，不再叠加 imePadding
+        val imeVisible = WindowInsets.isImeVisible
+        val panelHeight = ((maxHeight - 260.dp) / 2).coerceIn(150.dp, 360.dp)
 
         Column(
             Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing)
-                .imePadding()
                 .padding(horizontal = if (wide) 26.dp else 14.dp, vertical = 10.dp)
         ) {
             Header(state, onManageModel)
@@ -127,44 +129,52 @@ fun TranslateScreen(
                     )
                 }
             } else {
-                SourcePanel(
-                    state = state,
-                    modifier = Modifier
+                // 键盘弹出时整体可滚动，避免上下两个面板被压扁到看不见
+                Column(
+                    Modifier
                         .weight(1f)
-                        .fillMaxWidth(),
-                    onSourceChange = onSourceChange,
-                    onMic = onMic,
-                    onPaste = {
-                        val pasted = clipboard.getText()?.text
-                        if (!pasted.isNullOrBlank()) onSourceChange(pasted)
-                    },
-                    onClear = onClear
-                )
-                Spacer(Modifier.height(10.dp))
-                PrimaryAction(
-                    text = if (state.translating) "停止" else "翻译",
-                    enabled = state.translating || state.sourceText.isNotBlank(),
-                    busy = state.translating,
-                    modifier = Modifier.fillMaxWidth()
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
                 ) {
-                    if (state.translating) onCancel() else onTranslate()
+                    SourcePanel(
+                        state = state,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(panelHeight),
+                        onSourceChange = onSourceChange,
+                        onMic = onMic,
+                        onPaste = {
+                            val pasted = clipboard.getText()?.text
+                            if (!pasted.isNullOrBlank()) onSourceChange(pasted)
+                        },
+                        onClear = onClear
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    PrimaryAction(
+                        text = if (state.translating) "停止" else "翻译",
+                        enabled = state.translating || state.sourceText.isNotBlank(),
+                        busy = state.translating,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (state.translating) onCancel() else onTranslate()
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    ResultPanel(
+                        state = state,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(panelHeight),
+                        onCopy = {
+                            if (state.output.isNotEmpty()) {
+                                clipboard.setText(AnnotatedString(state.output))
+                            }
+                        },
+                        onSpeak = onSpeak
+                    )
                 }
-                Spacer(Modifier.height(10.dp))
-                ResultPanel(
-                    state = state,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    onCopy = {
-                        if (state.output.isNotEmpty()) {
-                            clipboard.setText(AnnotatedString(state.output))
-                        }
-                    },
-                    onSpeak = onSpeak
-                )
             }
 
-            if (state.history.isNotEmpty()) {
+            if (!imeVisible && state.history.isNotEmpty()) {
                 Spacer(Modifier.height(10.dp))
                 HistoryStrip(state.history, onHistory)
             }
@@ -179,14 +189,14 @@ private fun Header(state: UiState, onManageModel: () -> Unit) {
         Spacer(Modifier.width(10.dp))
         Column {
             Text(
-                text = "HY · MT3",
+                text = "ZRC",
                 color = TextMain,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = 2.5.sp
             )
             Text(
-                text = "离线翻译 · 1.8B",
+                text = "离线翻译 · Hy-MT3",
                 color = TextFaint,
                 fontSize = 10.sp,
                 letterSpacing = 1.sp

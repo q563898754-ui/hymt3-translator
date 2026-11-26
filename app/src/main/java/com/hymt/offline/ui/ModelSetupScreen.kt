@@ -85,7 +85,7 @@ fun ModelSetupScreen(
                 Spacer(Modifier.size(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
-                        text = "HY · MT3",
+                        text = "ZRC",
                         style = MaterialTheme.typography.titleMedium,
                         letterSpacing = 2.sp
                     )
