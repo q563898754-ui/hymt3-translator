@@ -117,7 +117,7 @@ fun SettingsScreen(
                 }
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    text = "系统语音引擎没有对应语言时，会尝试联网使用 Edge 云端语音；英/中始终本地朗读。",
+                    text = "如果目标语言读不出来，说明当前语音引擎缺少该语言语音包。到系统「文字转语音」里把首选引擎换成 RHVoice 这类支持多语种的引擎即可。",
                     color = TextFaint,
                     fontSize = 11.sp,
                     lineHeight = 16.sp

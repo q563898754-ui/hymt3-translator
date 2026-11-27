@@ -145,7 +145,8 @@ class VoiceInput(private val context: Context) {
     private fun describe(error: Int): String = when (error) {
         SpeechRecognizer.ERROR_AUDIO -> "录音出错"
         SpeechRecognizer.ERROR_CLIENT -> "识别客户端异常"
-        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "缺少录音权限"
+        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
+            "缺少录音权限：请到 设置 → 应用 → ZRC 翻译 → 权限 中允许麦克风（部分小米机型还需关闭「空白通行证」）"
         SpeechRecognizer.ERROR_NETWORK -> "离线识别不可用，已尝试联网（被网络策略阻止）"
         SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "识别超时"
         SpeechRecognizer.ERROR_NO_MATCH -> "没有匹配的识别结果"

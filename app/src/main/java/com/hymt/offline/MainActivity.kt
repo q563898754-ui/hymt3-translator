@@ -95,21 +95,45 @@ private fun RootScreen(vm: AppViewModel) {
         if (uri != null) vm.importModel(uri)
     }
 
+    var pendingMicStart by remember { mutableStateOf(false) }
+
     val micLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted: Boolean ->
-        val tip = if (granted) "已授权，请再点一次说话" else "未授予录音权限"
-        Toast.makeText(context, tip, Toast.LENGTH_SHORT).show()
+        if (granted) {
+            if (pendingMicStart) {
+                pendingMicStart = false
+                val locale = Languages.of(state.sourceLang)?.localeTag ?: "zh-CN"
+                vm.toggleListening(locale)
+            }
+        } else {
+            pendingMicStart = false
+            Toast.makeText(
+                context,
+                "麦克风权限被拒绝，请到 设置 → 应用 → ZRC 翻译 → 权限 中允许麦克风",
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
+
+    val micGranted = ContextCompat.checkSelfPermission(
+        context, Manifest.permission.RECORD_AUDIO
+    ) == PackageManager.PERMISSION_GRANTED
 
     val onMic: () -> Unit = {
         val locale = Languages.of(state.sourceLang)?.localeTag ?: "zh-CN"
-        val granted = ContextCompat.checkSelfPermission(
-            context, Manifest.permission.RECORD_AUDIO
-        ) == PackageManager.PERMISSION_GRANTED
-        if (granted) {
+        if (micGranted) {
             vm.toggleListening(locale)
         } else {
+            pendingMicStart = true
+            micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    // 切到对讲页时主动要一次权限，避免用户点下去才发现没授权
+    LaunchedEffect(tab, micGranted) {
+        if (tab == 1 && !micGranted) {
+            pendingMicStart = false
             micLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
