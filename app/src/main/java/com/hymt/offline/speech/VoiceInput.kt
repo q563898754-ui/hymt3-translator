@@ -24,9 +24,25 @@ class VoiceInput(private val context: Context) {
 
     fun isAvailable(): Boolean = SpeechRecognizer.isRecognitionAvailable(context)
 
+    /** 查询系统里注册的语音识别服务（需在清单声明 queries） */
+    fun servicePackages(): List<String> {
+        val intent = Intent("android.speech.RecognitionService")
+        return runCatching {
+            context.packageManager.queryIntentServices(intent, 0)
+                .mapNotNull { it.serviceInfo?.packageName }
+                .distinct()
+        }.getOrDefault(emptyList())
+    }
+
     fun start(localeTag: String) {
         if (!isAvailable()) {
-            onError?.invoke("系统未提供语音识别服务")
+            val packages = servicePackages()
+            val detail = if (packages.isEmpty()) {
+                "未检测到任何 RecognitionService"
+            } else {
+                "检测到：" + packages.joinToString()
+            }
+            onError?.invoke("系统未提供语音识别服务（$detail）")
             return
         }
         releaseRecognizer()

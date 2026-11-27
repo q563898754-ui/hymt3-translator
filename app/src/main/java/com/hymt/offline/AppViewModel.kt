@@ -394,8 +394,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun ensureSpeaker(): Speaker = speaker ?: Speaker(getApplication()).also { tts ->
         tts.onIssue = { issue ->
             val msg = when (issue) {
-                is Speaker.Issue.NoEngine ->
-                    "系统里没有可用的语音合成引擎。请安装一个语音合成应用（如「Google 文字转语音」或厂商语音服务），再到系统设置中启用。"
+                is Speaker.Issue.NoEngine -> {
+                    val detail = if (issue.detected.isEmpty()) {
+                        "未检测到任何 TTS 引擎"
+                    } else {
+                        "检测到：" + issue.detected.joinToString()
+                    }
+                    "系统里没有可用的语音合成引擎（$detail）。请安装一个语音合成应用（如「Google 文字转语音」或厂商语音服务），再到系统设置中启用。"
+                }
                 is Speaker.Issue.NoVoice ->
                     "当前语音引擎缺少「${issue.languageName}」的语音包。请到系统「文字转语音」设置中下载该语言的语音数据后重试。"
             }

@@ -10,6 +10,16 @@
         android:name="android.hardware.microphone"
         android:required="false" />
 
+    <!-- Android 11+ 包可见性：不声明这两项，系统会隐藏语音识别与语音合成服务 -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"

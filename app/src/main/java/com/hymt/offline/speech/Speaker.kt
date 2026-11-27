@@ -1,6 +1,7 @@
 package com.hymt.offline.speech
 
 import android.content.Context
+import android.content.Intent
 import android.speech.tts.TextToSpeech
 import java.util.Locale
 
@@ -15,7 +16,7 @@ import java.util.Locale
 class Speaker(private val context: Context) {
 
     sealed interface Issue {
-        data object NoEngine : Issue
+        data class NoEngine(val detected: List<String>) : Issue
         data class NoVoice(val languageName: String) : Issue
     }
 
@@ -32,17 +33,7 @@ class Speaker(private val context: Context) {
         if (engine == null) {
             pendingText = text
             pendingLocale = localeTag
-            tts = TextToSpeech(context) { status ->
-                ready = status == TextToSpeech.SUCCESS
-                if (!ready) {
-                    onIssue?.invoke(Issue.NoEngine)
-                    return@TextToSpeech
-                }
-                val queued = pendingText
-                val locale = pendingLocale
-                pendingText = null
-                if (queued != null) speakNow(queued, locale)
-            }
+            tts = createEngine()
             return
         }
         if (!ready) {
@@ -51,6 +42,47 @@ class Speaker(private val context: Context) {
             return
         }
         speakNow(text, localeTag)
+    }
+
+    /**
+     * 默认引擎失败时，系统里可能仍装有可用服务但没被设为默认，
+     * 因此只有一个候选时直接按包名创建。
+     */
+    private fun createEngine(): TextToSpeech? {
+        val packages = enginePackages()
+        val listener = TextToSpeech.OnInitListener { status ->
+            ready = status == TextToSpeech.SUCCESS
+            if (!ready) {
+                onIssue?.invoke(Issue.NoEngine(packages))
+                return@OnInitListener
+            }
+            val queued = pendingText
+            val locale = pendingLocale
+            pendingText = null
+            if (queued != null) speakNow(queued, locale)
+        }
+        val explicit = packages.singleOrNull()
+        val engine = runCatching {
+            if (explicit != null) {
+                TextToSpeech(context, listener, explicit)
+            } else {
+                TextToSpeech(context, listener)
+            }
+        }.getOrNull()
+        if (engine == null) {
+            onIssue?.invoke(Issue.NoEngine(packages))
+        }
+        return engine
+    }
+
+    /** 查询系统里注册的 TTS 引擎（已在清单声明 queries，否则 Android 11+ 会查不到） */
+    fun enginePackages(): List<String> {
+        val intent = Intent("android.intent.action.TTS_SERVICE")
+        return runCatching {
+            context.packageManager.queryIntentServices(intent, 0)
+                .mapNotNull { it.serviceInfo?.packageName }
+                .distinct()
+        }.getOrDefault(emptyList())
     }
 
     /** 引擎是否已就绪（用于界面提示当前是否可朗读） */
