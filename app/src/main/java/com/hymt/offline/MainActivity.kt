@@ -14,9 +14,13 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -28,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.hymt.offline.data.Languages
 import com.hymt.offline.ui.HyMtTheme
@@ -85,7 +90,18 @@ private fun RootScreen(vm: AppViewModel) {
         AlertDialog(
             onDismissRequest = vm::dismissSpeechIssue,
             title = { Text("语音朗读不可用") },
-            text = { Text(speechIssue) },
+            text = {
+                Column {
+                    Text(speechIssue)
+                    Text(
+                        text = "用英语语音近似朗读",
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .clickable { vm.speakWithEnglishFallback() }
+                            .padding(top = 12.dp)
+                    )
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
                     vm.dismissSpeechIssue()

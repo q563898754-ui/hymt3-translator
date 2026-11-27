@@ -414,6 +414,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(speechIssue = null) }
     }
 
+    /**
+     * 系统语音包不覆盖目标语言时的兜底：用英语引擎近似朗读。
+     * 对乌兹别克语、斯瓦希里语这类拉丁字母语言，至少能听出大意。
+     */
+    fun speakWithEnglishFallback() {
+        val out = _state.value.output
+        dismissSpeechIssue()
+        if (out.isBlank()) return
+        ensureSpeaker().speak(out, "en")
+        _state.update { it.copy(message = "该语言无语音包，已用英语语音近似朗读") }
+    }
+
     private fun withContextMain(block: () -> Unit) {
         viewModelScope.launch(Dispatchers.Main) { block() }
     }

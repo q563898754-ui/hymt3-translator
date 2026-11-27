@@ -13,8 +13,8 @@ android {
         applicationId = "com.hymt.offline"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 5
+        versionName = "0.5.0"
 
         // Hy-MT3-1.8B 为 1.35 GB 级模型，仅提供 64 位 ARM 版本
         ndk {
@@ -45,12 +45,25 @@ android {
         }
     }
 
+    signingConfigs {
+        // 仓库内固定的签名密钥，保证每次 CI 构建签名一致、可覆盖安装
+        create("stable") {
+            storeFile = file("keystore/zrc.p12")
+            storePassword = "zrc123456"
+            keyAlias = "zrc"
+            keyPassword = "zrc123456"
+            storeType = "PKCS12"
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("stable")
         }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("stable")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
