@@ -76,6 +76,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var prepareJob: Job? = null
     private var voice: VoiceInput? = null
     private var speaker: Speaker? = null
+    private var manualSpeak = false
     private var lastProgressEmit = 0L
 
     init {
@@ -302,7 +303,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     val merged = historyRepo.add(_state.value.history, item)
                     _state.update { it.copy(history = merged) }
                     if (_state.value.autoSpeak) {
-                        speakOutput()
+                        speakAuto()
                     }
                 }
             }.onFailure { e ->
@@ -363,6 +364,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val current = _state.value
         if (current.output.isBlank()) return
         val localeTag = Languages.of(current.targetLang)?.localeTag ?: "en"
+        manualSpeak = true
+        ensureSpeaker().speak(current.output, localeTag)
+    }
+
+    /** 自动朗读：失败只提示，不弹模态框，避免挡住整个界面 */
+    private fun speakAuto() {
+        val current = _state.value
+        if (current.output.isBlank()) return
+        val localeTag = Languages.of(current.targetLang)?.localeTag ?: "en"
+        manualSpeak = false
         ensureSpeaker().speak(current.output, localeTag)
     }
 
@@ -405,7 +416,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 is Speaker.Issue.NoVoice ->
                     "当前语音引擎缺少「${issue.languageName}」的语音包。可以在系统「文字转语音」里把首选引擎换成支持该语言的引擎（例如 RHVoice 提供乌兹别克语）。"
             }
-            _state.update { it.copy(speechIssue = msg) }
+            if (manualSpeak) {
+                _state.update { it.copy(speechIssue = msg) }
+            } else {
+                _state.update { it.copy(message = "自动朗读失败：当前语音引擎不支持该语言") }
+            }
         }
         speaker = tts
     }

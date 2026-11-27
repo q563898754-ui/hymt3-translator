@@ -1,16 +1,23 @@
 package com.hymt.offline.speech
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import androidx.core.content.ContextCompat
 
 /**
- * 语音输入封装：优先使用系统「设备端」识别器（API 31+），确保不联网。
- * 注意：所有方法都必须在主线程调用。
+ * 语音输入封装。
+ *
+ * 优先尝试设备端识别器（API 31+，不联网）；如果它返回权限/客户端错误，
+ * 自动回退到标准识别器再试一次，并在最终失败时把诊断细节一起报出来。
+ *
+ * 所有方法必须在主线程调用。
  */
 class VoiceInput(private val context: Context) {
 
@@ -20,19 +27,11 @@ class VoiceInput(private val context: Context) {
     var onListeningChanged: ((Boolean) -> Unit)? = null
 
     private var recognizer: SpeechRecognizer? = null
-    private var onDevice = false
+    private var usingOnDevice = false
+    private var fallbackTried = false
+    private var currentLocale: String = "zh-CN"
 
     fun isAvailable(): Boolean = SpeechRecognizer.isRecognitionAvailable(context)
-
-    /** 查询系统里注册的语音识别服务（需在清单声明 queries） */
-    fun servicePackages(): List<String> {
-        val intent = Intent("android.speech.RecognitionService")
-        return runCatching {
-            context.packageManager.queryIntentServices(intent, 0)
-                .mapNotNull { it.serviceInfo?.packageName }
-                .distinct()
-        }.getOrDefault(emptyList())
-    }
 
     fun start(localeTag: String) {
         if (!isAvailable()) {
@@ -45,13 +44,28 @@ class VoiceInput(private val context: Context) {
             onError?.invoke("系统未提供语音识别服务（$detail）")
             return
         }
+        currentLocale = localeTag
+        fallbackTried = false
+        begin(localeTag, preferOnDevice = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+    }
+
+    fun stop() {
+        runCatching { recognizer?.stopListening() }
+    }
+
+    fun release() {
         releaseRecognizer()
-        val created = createRecognizer()
+    }
+
+    private fun begin(localeTag: String, preferOnDevice: Boolean) {
+        releaseRecognizer()
+        val created = createRecognizer(preferOnDevice)
         if (created == null) {
-            onError?.invoke("无法启动设备端语音识别")
+            onError?.invoke("无法创建语音识别器${diagnostics(0)}")
             return
         }
         recognizer = created
+        usingOnDevice = preferOnDevice
         created.setRecognitionListener(listener)
 
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -72,25 +86,13 @@ class VoiceInput(private val context: Context) {
             }
     }
 
-    fun stop() {
-        runCatching { recognizer?.stopListening() }
-    }
-
-    fun release() {
-        releaseRecognizer()
-    }
-
-    private fun createRecognizer(): SpeechRecognizer? {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+    private fun createRecognizer(preferOnDevice: Boolean): SpeechRecognizer? {
+        if (preferOnDevice) {
             runCatching {
                 val r = SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
-                if (r != null) {
-                    onDevice = true
-                    return r
-                }
+                if (r != null) return r
             }
         }
-        onDevice = false
         return runCatching { SpeechRecognizer.createSpeechRecognizer(context) }.getOrNull()
     }
 
@@ -117,7 +119,13 @@ class VoiceInput(private val context: Context) {
 
         override fun onError(error: Int) {
             onListeningChanged?.invoke(false)
-            onError?.invoke(describe(error))
+            // 设备端识别器失败时，先用标准识别器重试一次
+            if (usingOnDevice && !fallbackTried && error != SpeechRecognizer.ERROR_NO_MATCH) {
+                fallbackTried = true
+                begin(currentLocale, preferOnDevice = false)
+                return
+            }
+            onError?.invoke(describe(error) + diagnostics(error))
         }
 
         override fun onResults(results: Bundle?) {
@@ -142,19 +150,38 @@ class VoiceInput(private val context: Context) {
         override fun onEvent(eventType: Int, params: Bundle?) = Unit
     }
 
+    /** 失败时的现场信息：权限状态、识别服务数量、错误码 */
+    private fun diagnostics(error: Int): String {
+        val granted = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+        val services = servicePackages()
+        val permission = if (granted) "已授权" else "未授权"
+        val service = if (services.isEmpty()) "无" else services.joinToString()
+        return "（权限=$permission，识别服务=$service，错误码=$error）"
+    }
+
+    fun servicePackages(): List<String> {
+        val intent = Intent("android.speech.RecognitionService")
+        return runCatching {
+            context.packageManager.queryIntentServices(intent, 0)
+                .mapNotNull { it.serviceInfo?.packageName }
+                .distinct()
+        }.getOrDefault(emptyList())
+    }
+
     private fun describe(error: Int): String = when (error) {
         SpeechRecognizer.ERROR_AUDIO -> "录音出错"
         SpeechRecognizer.ERROR_CLIENT -> "识别客户端异常"
-        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
-            "缺少录音权限：请到 设置 → 应用 → ZRC 翻译 → 权限 中允许麦克风（部分小米机型还需关闭「空白通行证」）"
-        SpeechRecognizer.ERROR_NETWORK -> "离线识别不可用，已尝试联网（被网络策略阻止）"
+        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "缺少录音权限"
+        SpeechRecognizer.ERROR_NETWORK -> "识别服务需要联网，但网络不可用"
         SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "识别超时"
         SpeechRecognizer.ERROR_NO_MATCH -> "没有匹配的识别结果"
         SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "识别引擎忙，请稍后再试"
-        SpeechRecognizer.ERROR_SERVER -> "识别服务不可用"
+        SpeechRecognizer.ERROR_SERVER -> "识别服务内部错误"
         SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "未检测到语音输入"
         SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED -> "系统未安装该语言的离线语音包"
         SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> "该语言的离线识别暂不可用"
-        else -> "语音识别失败（$error）"
+        else -> "语音识别失败"
     }
 }

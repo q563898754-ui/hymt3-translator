@@ -13,8 +13,8 @@ android {
         applicationId = "com.hymt.offline"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10
-        versionName = "0.8.2"
+        versionCode = 11
+        versionName = "0.8.3"
 
         // Hy-MT3-1.8B 为 1.35 GB 级模型，仅提供 64 位 ARM 版本
         ndk {
