@@ -6,12 +6,13 @@ import android.speech.tts.TextToSpeech
 import java.util.Locale
 
 /**
- * 译文朗读，使用系统 TTS 引擎。
+ * 译文朗读。
  *
- * 国内 ROM（含 HyperOS）常见两种情况：
- * 1. 没有任何 TTS 引擎 —— 初始化失败
- * 2. 有引擎但缺少对应语言的语音包 —— setLanguage 返回 LANG_MISSING_DATA
- * 两种情况都会通过 onIssue 上报，由界面引导用户去系统「文字转语音」设置。
+ * 引擎策略（按目标语言自动切换）：
+ *  - 中文 / 英文：用系统默认引擎（音质最好，离线）
+ *  - 其它语种：优先用 RHVoice（它带乌兹别克语等小语种语音包），失败再退回默认引擎
+ *
+ * 这样即使用户把 RHVoice 设成系统默认，也不会出现「中文读不出来」的问题。
  */
 class Speaker(private val context: Context) {
 
@@ -22,60 +23,117 @@ class Speaker(private val context: Context) {
 
     var onIssue: ((Issue) -> Unit)? = null
 
-    private var tts: TextToSpeech? = null
+    private var engine: TextToSpeech? = null
+    private var enginePackage: String? = null
     private var ready = false
-    private var pendingText: String? = null
-    private var pendingLocale: String = "en"
+    private var retriedWithDefault = false
+    private var pending: Pair<String, String>? = null
 
     fun speak(text: String, localeTag: String) {
         if (text.isBlank()) return
-        val engine = tts
-        if (engine == null) {
-            pendingText = text
-            pendingLocale = localeTag
-            tts = createEngine()
-            return
-        }
-        if (!ready) {
-            pendingText = text
-            pendingLocale = localeTag
-            return
-        }
-        speakNow(text, localeTag)
+        pending = text to localeTag
+        retriedWithDefault = false
+        ensureEngine()
     }
 
-    /**
-     * 默认引擎失败时，系统里可能仍装有可用服务但没被设为默认，
-     * 因此只有一个候选时直接按包名创建。
-     */
-    private fun createEngine(): TextToSpeech? {
-        val packages = enginePackages()
-        val listener = TextToSpeech.OnInitListener { status ->
-            ready = status == TextToSpeech.SUCCESS
-            if (!ready) {
-                onIssue?.invoke(Issue.NoEngine(packages))
-                return@OnInitListener
-            }
-            val queued = pendingText
-            val locale = pendingLocale
-            pendingText = null
-            if (queued != null) speakNow(queued, locale)
+    fun stop() {
+        runCatching { engine?.stop() }
+    }
+
+    fun release() {
+        runCatching { engine?.shutdown() }
+        engine = null
+        ready = false
+    }
+
+    private fun ensureEngine() {
+        val job = pending ?: return
+        val locale = Locale.forLanguageTag(job.second)
+        val wantPackage = if (needsThirdParty(locale)) thirdPartyPackage() else null
+
+        val current = engine
+        if (current != null && ready && enginePackage == wantPackage) {
+            deliver(current, job)
+            return
         }
-        val explicit = packages.singleOrNull()
-        val engine = runCatching {
-            if (explicit != null) {
-                TextToSpeech(context, listener, explicit)
+        create(wantPackage)
+    }
+
+    private fun create(packageName: String?) {
+        destroyCurrent()
+        enginePackage = packageName
+        ready = false
+
+        val holder = arrayOfNulls<TextToSpeech>(1)
+        val listener = TextToSpeech.OnInitListener { status ->
+            val created = holder[0]
+            if (status == TextToSpeech.SUCCESS && created != null) {
+                engine = created
+                ready = true
+                ensureEngine()
+            } else {
+                created?.let { runCatching { it.shutdown() } }
+                if (packageName != null && !retriedWithDefault) {
+                    retriedWithDefault = true
+                    create(null)
+                } else {
+                    pending = null
+                    onIssue?.invoke(Issue.NoEngine(enginePackages()))
+                }
+            }
+        }
+
+        val created = runCatching {
+            if (packageName != null) {
+                TextToSpeech(context, listener, packageName)
             } else {
                 TextToSpeech(context, listener)
             }
         }.getOrNull()
-        if (engine == null) {
-            onIssue?.invoke(Issue.NoEngine(packages))
+        holder[0] = created
+
+        if (created == null) {
+            if (packageName != null && !retriedWithDefault) {
+                retriedWithDefault = true
+                create(null)
+            } else {
+                pending = null
+                onIssue?.invoke(Issue.NoEngine(enginePackages()))
+            }
         }
-        return engine
     }
 
-    /** 查询系统里注册的 TTS 引擎（已在清单声明 queries，否则 Android 11+ 会查不到） */
+    private fun deliver(target: TextToSpeech, job: Pair<String, String>) {
+        val locale = Locale.forLanguageTag(job.second)
+        if (applyLanguage(target, locale)) {
+            pending = null
+            runCatching { target.speak(job.first, TextToSpeech.QUEUE_FLUSH, null, "zrc-utterance") }
+            return
+        }
+        // 第三方引擎没有该语言 → 退回系统默认引擎再试一次
+        if (enginePackage != null && !retriedWithDefault) {
+            retriedWithDefault = true
+            create(null)
+        } else {
+            pending = null
+            onIssue?.invoke(Issue.NoVoice(localeName(locale)))
+        }
+    }
+
+    private fun destroyCurrent() {
+        runCatching { engine?.shutdown() }
+        engine = null
+        ready = false
+    }
+
+    private fun needsThirdParty(locale: Locale): Boolean =
+        locale.language != "zh" && locale.language != "en"
+
+    /** 已安装的 RHVoice 引擎包名；没有则返回 null */
+    private fun thirdPartyPackage(): String? =
+        enginePackages().firstOrNull { it.contains("rhvoice", ignoreCase = true) }
+
+    /** 查询系统里注册的 TTS 引擎（清单已声明 queries） */
     fun enginePackages(): List<String> {
         val intent = Intent("android.intent.action.TTS_SERVICE")
         return runCatching {
@@ -85,38 +143,11 @@ class Speaker(private val context: Context) {
         }.getOrDefault(emptyList())
     }
 
-    /** 引擎是否已就绪（用于界面提示当前是否可朗读） */
-    fun isReady(): Boolean = ready
-
-    fun stop() {
-        runCatching { tts?.stop() }
-    }
-
-    fun release() {
-        runCatching { tts?.shutdown() }
-        tts = null
-        ready = false
-    }
-
-    private fun speakNow(text: String, localeTag: String) {
-        val engine = tts ?: return
-        val locale = Locale.forLanguageTag(localeTag)
-        if (!applyLanguage(engine, locale)) {
-            onIssue?.invoke(Issue.NoVoice(localeName(locale)))
-            return
-        }
-        runCatching {
-            engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "zrc-utterance")
-        }.onFailure {
-            onIssue?.invoke(Issue.NoVoice(localeName(locale)))
-        }
-    }
-
     /**
      * 逐个尝试候选 Locale，只要有一个可用就返回 true。
      * 中文设备上 "zh-CN" / "zh_CN" / "zh" 的语音包注册方式并不统一。
      */
-    private fun applyLanguage(engine: TextToSpeech, locale: Locale): Boolean {
+    private fun applyLanguage(target: TextToSpeech, locale: Locale): Boolean {
         val candidates = linkedSetOf<Locale>()
         candidates.add(locale)
         when (locale.language) {
@@ -134,7 +165,7 @@ class Speaker(private val context: Context) {
             }
         }
         for (candidate in candidates) {
-            val result = runCatching { engine.setLanguage(candidate) }.getOrDefault(-1)
+            val result = runCatching { target.setLanguage(candidate) }.getOrDefault(-1)
             if (result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED) {
                 return true
             }
