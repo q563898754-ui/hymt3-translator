@@ -17,7 +17,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -29,8 +34,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.hymt.offline.UiState
+import com.hymt.offline.data.Languages
 
 val PanelShape = RoundedCornerShape(22.dp)
 val ChipShape = RoundedCornerShape(14.dp)
@@ -201,5 +209,136 @@ fun ThinProgress(fraction: Float, modifier: Modifier = Modifier) {
                 .clip(CircleShape)
                 .background(Brush.horizontalGradient(listOf(Mint, Amber)))
         )
+    }
+}
+
+/** 顶部品牌栏，右侧状态胶囊可进入设置 */
+@Composable
+fun AppHeader(state: UiState, onOpenSettings: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        GridMark(24)
+        Spacer(Modifier.width(10.dp))
+        Column {
+            Text(
+                text = "ZRC",
+                color = TextMain,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 2.5.sp
+            )
+            Text(
+                text = "离线翻译 · Hy-MT3",
+                color = TextFaint,
+                fontSize = 10.sp,
+                letterSpacing = 1.sp
+            )
+        }
+        Spacer(Modifier.weight(1f))
+        Row(
+            Modifier
+                .clip(ChipShape)
+                .background(Panel)
+                .border(1.dp, PanelStroke, ChipShape)
+                .clickable(onClick = onOpenSettings)
+                .padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            StatusDot(active = !state.translating)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = if (state.translating) "推理中" else "已就绪",
+                color = TextDim,
+                fontSize = 10.sp,
+                letterSpacing = 0.5.sp
+            )
+            Spacer(Modifier.width(6.dp))
+            Icon(
+                Icons.Filled.Settings,
+                contentDescription = "设置",
+                tint = TextFaint,
+                modifier = Modifier.size(13.dp)
+            )
+        }
+    }
+}
+
+/** 原文 / 译文语言选择条 */
+@Composable
+fun LanguageSelectorRow(
+    state: UiState,
+    onSwap: () -> Unit,
+    onPickSource: () -> Unit,
+    onPickTarget: () -> Unit
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        LangButton(
+            label = "原文",
+            value = Languages.displayName(state.sourceLang),
+            modifier = Modifier.weight(1f),
+            onClick = onPickSource
+        )
+        Spacer(Modifier.width(8.dp))
+        Box(
+            Modifier
+                .size(42.dp)
+                .clip(CircleShape)
+                .background(Panel)
+                .border(1.dp, PanelStroke, CircleShape)
+                .clickable(onClick = onSwap),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Filled.SwapHoriz,
+                contentDescription = "对调语言",
+                tint = Mint,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        LangButton(
+            label = "译文",
+            value = Languages.displayName(state.targetLang),
+            modifier = Modifier.weight(1f),
+            onClick = onPickTarget
+        )
+    }
+}
+
+@Composable
+fun LangButton(
+    label: String,
+    value: String,
+    modifier: Modifier,
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(18.dp)
+    Column(
+        modifier
+            .clip(shape)
+            .background(Panel)
+            .border(1.dp, PanelStroke, shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 10.dp)
+    ) {
+        Text(text = label, color = TextFaint, fontSize = 10.sp, letterSpacing = 1.sp)
+        Spacer(Modifier.height(3.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = value,
+                color = TextMain,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+            Spacer(Modifier.width(6.dp))
+            Icon(
+                Icons.Filled.KeyboardArrowDown,
+                contentDescription = null,
+                tint = TextFaint,
+                modifier = Modifier.size(16.dp)
+            )
+        }
     }
 }

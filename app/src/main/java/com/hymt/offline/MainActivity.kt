@@ -14,12 +14,26 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -27,18 +41,28 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.hymt.offline.data.Languages
 import com.hymt.offline.ui.HyMtTheme
 import com.hymt.offline.ui.LanguageSheet
+import com.hymt.offline.ui.Mint
 import com.hymt.offline.ui.ModelSetupScreen
+import com.hymt.offline.ui.PanelStroke
+import com.hymt.offline.ui.PanelTop
+import com.hymt.offline.ui.SettingsScreen
+import com.hymt.offline.ui.TextFaint
 import com.hymt.offline.ui.TranslateScreen
+import com.hymt.offline.ui.VoiceScreen
 
 class MainActivity : ComponentActivity() {
 
@@ -62,7 +86,8 @@ class MainActivity : ComponentActivity() {
 private fun RootScreen(vm: AppViewModel) {
     val state by vm.state.collectAsState()
     val context = LocalContext.current
-    var showModel by remember { mutableStateOf(false) }
+    var tab by remember { mutableIntStateOf(0) }
+    var showSettings by remember { mutableStateOf(false) }
 
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -73,8 +98,20 @@ private fun RootScreen(vm: AppViewModel) {
     val micLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted: Boolean ->
-        val tip = if (granted) "已授权，请再点一次语音" else "未授予录音权限"
+        val tip = if (granted) "已授权，请再点一次说话" else "未授予录音权限"
         Toast.makeText(context, tip, Toast.LENGTH_SHORT).show()
+    }
+
+    val onMic: () -> Unit = {
+        val locale = Languages.of(state.sourceLang)?.localeTag ?: "zh-CN"
+        val granted = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            vm.toggleListening(locale)
+        } else {
+            micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
     }
 
     LaunchedEffect(state.message) {
@@ -119,47 +156,65 @@ private fun RootScreen(vm: AppViewModel) {
     }
 
     Box(Modifier.fillMaxSize()) {
-        val ready = state.modelStatus is ModelStatus.Ready
+        when {
+            state.modelStatus !is ModelStatus.Ready -> {
+                ModelSetupScreen(
+                    status = state.modelStatus,
+                    freeSpaceGb = state.freeSpaceGb,
+                    onDownload = vm::downloadModel,
+                    onImport = { importLauncher.launch(arrayOf("*/*")) },
+                    onDelete = vm::deleteModel,
+                    onClose = null
+                )
+            }
 
-        if (ready && !showModel) {
-            TranslateScreen(
-                state = state,
-                onSourceChange = vm::onSourceTextChange,
-                onTranslate = vm::translate,
-                onCancel = vm::cancelTranslate,
-                onSwap = vm::swapLanguages,
-                onPickSource = { vm.openPicker(PickerTarget.SOURCE) },
-                onPickTarget = { vm.openPicker(PickerTarget.TARGET) },
-                onMic = {
-                    val locale = Languages.of(state.sourceLang)?.localeTag ?: "zh-CN"
-                    val granted = ContextCompat.checkSelfPermission(
-                        context, Manifest.permission.RECORD_AUDIO
-                    ) == PackageManager.PERMISSION_GRANTED
-                    if (granted) {
-                        vm.toggleListening(locale)
-                    } else {
-                        micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            showSettings -> {
+                SettingsScreen(
+                    state = state,
+                    onBack = { showSettings = false },
+                    onToggleAutoSpeak = vm::toggleAutoSpeak,
+                    onUseHistory = { item ->
+                        vm.useHistory(item)
+                        showSettings = false
+                    },
+                    onClearHistory = vm::clearHistory,
+                    onDeleteModel = vm::deleteModel
+                )
+            }
+
+            else -> {
+                Column(Modifier.fillMaxSize()) {
+                    Box(Modifier.weight(1f)) {
+                        if (tab == 0) {
+                            TranslateScreen(
+                                state = state,
+                                onSourceChange = vm::onSourceTextChange,
+                                onTranslate = vm::translate,
+                                onCancel = vm::cancelTranslate,
+                                onSwap = vm::swapLanguages,
+                                onPickSource = { vm.openPicker(PickerTarget.SOURCE) },
+                                onPickTarget = { vm.openPicker(PickerTarget.TARGET) },
+                                onMic = onMic,
+                                onSpeak = vm::speakOutput,
+                                onToggleAutoSpeak = vm::toggleAutoSpeak,
+                                onClear = vm::clearSource,
+                                onOpenSettings = { showSettings = true }
+                            )
+                        } else {
+                            VoiceScreen(
+                                state = state,
+                                onMic = onMic,
+                                onSwap = vm::swapLanguages,
+                                onPickSource = { vm.openPicker(PickerTarget.SOURCE) },
+                                onPickTarget = { vm.openPicker(PickerTarget.TARGET) },
+                                onSpeak = vm::speakOutput,
+                                onOpenSettings = { showSettings = true }
+                            )
+                        }
                     }
-                },
-                onSpeak = vm::speakOutput,
-                onToggleAutoSpeak = vm::toggleAutoSpeak,
-                onClear = vm::clearSource,
-                onHistory = vm::useHistory,
-                onManageModel = { showModel = true }
-            )
-        } else {
-            ModelSetupScreen(
-                status = state.modelStatus,
-                freeSpaceGb = state.freeSpaceGb,
-                onDownload = vm::downloadModel,
-                onImport = { importLauncher.launch(arrayOf("*/*")) },
-                onDelete = vm::deleteModel,
-                onClose = if (ready) {
-                    { showModel = false }
-                } else {
-                    null
+                    BottomBar(tab) { tab = it }
                 }
-            )
+            }
         }
 
         val picker = state.picker
@@ -172,6 +227,62 @@ private fun RootScreen(vm: AppViewModel) {
                 onDismiss = vm::closePicker
             )
         }
+    }
+}
+
+@Composable
+private fun BottomBar(selected: Int, onSelect: (Int) -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(PanelTop)
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(PanelStroke)
+        )
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(62.dp)
+                .navigationBarsPadding(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            BottomTab("文本", Icons.Filled.Translate, selected == 0) { onSelect(0) }
+            BottomTab("对讲", Icons.Filled.Mic, selected == 1) { onSelect(1) }
+        }
+    }
+}
+
+@Composable
+private fun RowScope.BottomTab(
+    label: String,
+    icon: ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Column(
+        Modifier
+            .weight(1f)
+            .fillMaxHeight()
+            .clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            icon,
+            contentDescription = label,
+            tint = if (selected) Mint else TextFaint,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(Modifier.height(3.dp))
+        Text(
+            text = label,
+            color = if (selected) Mint else TextFaint,
+            fontSize = 10.sp
+        )
     }
 }
 

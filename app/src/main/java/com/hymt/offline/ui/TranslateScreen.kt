@@ -2,7 +2,6 @@ package com.hymt.offline.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -18,44 +17,33 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hymt.offline.UiState
-import com.hymt.offline.data.HistoryItem
-import com.hymt.offline.data.Languages
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -71,8 +59,7 @@ fun TranslateScreen(
     onSpeak: () -> Unit,
     onToggleAutoSpeak: () -> Unit,
     onClear: () -> Unit,
-    onHistory: (HistoryItem) -> Unit,
-    onManageModel: () -> Unit
+    onOpenSettings: () -> Unit
 ) {
     val clipboard = LocalClipboardManager.current
 
@@ -92,14 +79,9 @@ fun TranslateScreen(
                 .windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(horizontal = if (wide) 26.dp else 14.dp, vertical = 10.dp)
         ) {
-            Header(state, onManageModel)
+            AppHeader(state, onOpenSettings)
             Spacer(Modifier.height(12.dp))
-            LanguageBar(
-                state = state,
-                onSwap = onSwap,
-                onPickSource = onPickSource,
-                onPickTarget = onPickTarget
-            )
+            LanguageSelectorRow(state, onSwap, onPickSource, onPickTarget)
             Spacer(Modifier.height(12.dp))
 
             if (wide) {
@@ -145,7 +127,7 @@ fun TranslateScreen(
                         state = state,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(panelHeight),
+                            .height(if (imeVisible) 200.dp else panelHeight),
                         onSourceChange = onSourceChange,
                         onMic = onMic,
                         onPaste = {
@@ -179,133 +161,6 @@ fun TranslateScreen(
                     )
                 }
             }
-
-            if (!imeVisible && state.history.isNotEmpty()) {
-                Spacer(Modifier.height(10.dp))
-                HistoryStrip(state.history, onHistory)
-            }
-        }
-    }
-}
-
-@Composable
-private fun Header(state: UiState, onManageModel: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        GridMark(24)
-        Spacer(Modifier.width(10.dp))
-        Column {
-            Text(
-                text = "ZRC",
-                color = TextMain,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = 2.5.sp
-            )
-            Text(
-                text = "离线翻译 · Hy-MT3",
-                color = TextFaint,
-                fontSize = 10.sp,
-                letterSpacing = 1.sp
-            )
-        }
-        Spacer(Modifier.weight(1f))
-        Row(
-            Modifier
-                .clip(ChipShape)
-                .background(Panel)
-                .border(1.dp, PanelStroke, ChipShape)
-                .clickable(onClick = onManageModel)
-                .padding(horizontal = 10.dp, vertical = 7.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            StatusDot(active = !state.translating)
-            Spacer(Modifier.width(6.dp))
-            Text(
-                text = if (state.translating) "推理中" else "模型",
-                color = TextDim,
-                fontSize = 10.sp,
-                letterSpacing = 0.5.sp
-            )
-        }
-    }
-}
-
-@Composable
-private fun LanguageBar(
-    state: UiState,
-    onSwap: () -> Unit,
-    onPickSource: () -> Unit,
-    onPickTarget: () -> Unit
-) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        LangButton(
-            label = "原文",
-            value = Languages.displayName(state.sourceLang),
-            modifier = Modifier.weight(1f),
-            onClick = onPickSource
-        )
-        Spacer(Modifier.width(8.dp))
-        Box(
-            Modifier
-                .size(42.dp)
-                .clip(CircleShape)
-                .background(Panel)
-                .border(1.dp, PanelStroke, CircleShape)
-                .clickable(onClick = onSwap),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                Icons.Filled.SwapHoriz,
-                contentDescription = "对调语言",
-                tint = Mint,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-        Spacer(Modifier.width(8.dp))
-        LangButton(
-            label = "译文",
-            value = Languages.displayName(state.targetLang),
-            modifier = Modifier.weight(1f),
-            onClick = onPickTarget
-        )
-    }
-}
-
-@Composable
-private fun LangButton(
-    label: String,
-    value: String,
-    modifier: Modifier,
-    onClick: () -> Unit
-) {
-    val shape = RoundedCornerShape(18.dp)
-    Column(
-        modifier
-            .clip(shape)
-            .background(Panel)
-            .border(1.dp, PanelStroke, shape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 10.dp)
-    ) {
-        Text(text = label, color = TextFaint, fontSize = 10.sp, letterSpacing = 1.sp)
-        Spacer(Modifier.height(3.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = value,
-                color = TextMain,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false)
-            )
-            Spacer(Modifier.width(6.dp))
-            Icon(
-                Icons.Filled.KeyboardArrowDown,
-                contentDescription = null,
-                tint = TextFaint,
-                modifier = Modifier.size(16.dp)
-            )
         }
     }
 }
@@ -465,58 +320,7 @@ private fun ActionColumn(state: UiState, onTranslate: () -> Unit, onCancel: () -
             color = TextFaint,
             fontSize = 10.sp,
             lineHeight = 15.sp,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-        )
-    }
-}
-
-@Composable
-private fun HistoryStrip(history: List<HistoryItem>, onClick: (HistoryItem) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            text = "最近",
-            color = TextFaint,
-            fontSize = 10.sp,
-            letterSpacing = 1.sp
-        )
-        Spacer(Modifier.width(10.dp))
-        LazyRow(
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(history.take(12), key = { it.id }) { item ->
-                HistoryCard(item) { onClick(item) }
-            }
-        }
-    }
-}
-
-@Composable
-private fun HistoryCard(item: HistoryItem, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(14.dp)
-    Column(
-        Modifier
-            .width(188.dp)
-            .clip(shape)
-            .background(Panel)
-            .border(1.dp, PanelStroke, shape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 9.dp)
-    ) {
-        Text(
-            text = item.source,
-            color = TextDim,
-            fontSize = 11.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Spacer(Modifier.height(3.dp))
-        Text(
-            text = item.target,
-            color = TextMain,
-            fontSize = 12.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            textAlign = TextAlign.Center
         )
     }
 }

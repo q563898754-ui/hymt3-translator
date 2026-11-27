@@ -144,12 +144,16 @@ class ModelManager(private val context: Context) {
 
         private const val MIN_BYTES = 1_000_000_000L
 
+        private const val MODEL_SCOPE_URL =
+            "https://modelscope.cn/models/Tencent-Hunyuan/Hy-MT3-1.8B-GGUF/resolve/master/Hy-MT3-1.8B-Q4_K_M.gguf"
+
         private const val HF_URL =
             "https://huggingface.co/tencent/Hy-MT3-1.8B-GGUF/resolve/main/Hy-MT3-1.8B-Q4_K_M.gguf"
 
         private const val HF_MIRROR_URL =
             "https://hf-mirror.com/tencent/Hy-MT3-1.8B-GGUF/resolve/main/Hy-MT3-1.8B-Q4_K_M.gguf"
 
-        private val SOURCES = listOf(HF_URL, HF_MIRROR_URL)
+        /** 国内优先走 ModelScope（魔搭），失败再回退 HuggingFace 及其镜像 */
+        private val SOURCES = listOf(MODEL_SCOPE_URL, HF_URL, HF_MIRROR_URL)
     }
 }

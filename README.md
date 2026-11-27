@@ -44,7 +44,7 @@
 
 APK 不内置模型。首次打开应用有三种方式：
 
-1. **应用内下载**：自动从 Hugging Face 拉取 `Hy-MT3-1.8B-Q4_K_M.gguf`，失败时回退 `hf-mirror.com`，支持断点续传。
+1. **应用内下载**：优先从 ModelScope（魔搭）拉取 `Hy-MT3-1.8B-Q4_K_M.gguf`，失败再回退 Hugging Face 与 hf-mirror，支持断点续传。国内网络通常无需代理。
 2. **本地导入**：用系统文件选择器选中已下载的 `.gguf`。
 3. **手动推入**（需 adb）：
 
