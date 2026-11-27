@@ -50,6 +50,7 @@ import com.hymt.offline.UiState
 @Composable
 fun VoiceScreen(
     state: UiState,
+    micGranted: Boolean,
     onMic: () -> Unit,
     onSwap: () -> Unit,
     onPickSource: () -> Unit,
@@ -83,6 +84,18 @@ fun VoiceScreen(
                     color = if (state.listening) Mint else TextDim,
                     fontSize = 14.sp
                 )
+                if (!micGranted) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = "麦克风未授权 · 点此授权",
+                        color = Amber,
+                        fontSize = 12.sp,
+                        modifier = Modifier
+                            .clip(ChipShape)
+                            .clickable(onClick = onMic)
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
                 if (state.partial.isNotBlank()) {
                     Spacer(Modifier.height(10.dp))
                     Text(

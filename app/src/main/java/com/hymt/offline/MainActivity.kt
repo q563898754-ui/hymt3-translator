@@ -38,6 +38,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -49,9 +50,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.hymt.offline.data.Languages
 import com.hymt.offline.ui.HyMtTheme
 import com.hymt.offline.ui.LanguageSheet
@@ -96,10 +100,25 @@ private fun RootScreen(vm: AppViewModel) {
     }
 
     var pendingMicStart by remember { mutableStateOf(false) }
+    var showPermDialog by remember { mutableStateOf(false) }
+    var micGranted by remember { mutableStateOf(hasMic(context)) }
+
+    // 从系统设置返回时重新读取权限，避免界面停在旧状态
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                micGranted = hasMic(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     val micLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted: Boolean ->
+        micGranted = granted
         if (granted) {
             if (pendingMicStart) {
                 pendingMicStart = false
@@ -108,17 +127,9 @@ private fun RootScreen(vm: AppViewModel) {
             }
         } else {
             pendingMicStart = false
-            Toast.makeText(
-                context,
-                "麦克风权限被拒绝，请到 设置 → 应用 → ZRC 翻译 → 权限 中允许麦克风",
-                Toast.LENGTH_LONG
-            ).show()
+            showPermDialog = true
         }
     }
-
-    val micGranted = ContextCompat.checkSelfPermission(
-        context, Manifest.permission.RECORD_AUDIO
-    ) == PackageManager.PERMISSION_GRANTED
 
     val onMic: () -> Unit = {
         val locale = Languages.of(state.sourceLang)?.localeTag ?: "zh-CN"
@@ -131,8 +142,8 @@ private fun RootScreen(vm: AppViewModel) {
     }
 
     // 切到对讲页时主动要一次权限，避免用户点下去才发现没授权
-    LaunchedEffect(tab, micGranted) {
-        if (tab == 1 && !micGranted) {
+    LaunchedEffect(tab) {
+        if (tab == 1 && !hasMic(context)) {
             pendingMicStart = false
             micLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
@@ -179,6 +190,29 @@ private fun RootScreen(vm: AppViewModel) {
         )
     }
 
+    if (showPermDialog) {
+        AlertDialog(
+            onDismissRequest = { showPermDialog = false },
+            title = { Text("需要麦克风权限") },
+            text = {
+                Text("语音输入必须使用麦克风。如果系统设置里已经允许，仍然提示无权限，通常是小米的隐私保护（空白通行证）在拦截，需要在权限设置里改为「允许」。")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showPermDialog = false
+                    openAppSettings(context)
+                }) {
+                    Text("去设置")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPermDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
     Box(Modifier.fillMaxSize()) {
         when {
             state.modelStatus !is ModelStatus.Ready -> {
@@ -202,7 +236,11 @@ private fun RootScreen(vm: AppViewModel) {
                         showSettings = false
                     },
                     onClearHistory = vm::clearHistory,
-                    onDeleteModel = vm::deleteModel
+                    onDeleteModel = vm::deleteModel,
+                    micGranted = micGranted,
+                    asrServices = queryServices(context, "android.speech.RecognitionService"),
+                    ttsEngines = queryServices(context, "android.intent.action.TTS_SERVICE"),
+                    onOpenAppSettings = { openAppSettings(context) }
                 )
             }
 
@@ -227,6 +265,7 @@ private fun RootScreen(vm: AppViewModel) {
                         } else {
                             VoiceScreen(
                                 state = state,
+                                micGranted = micGranted,
                                 onMic = onMic,
                                 onSwap = vm::swapLanguages,
                                 onPickSource = { vm.openPicker(PickerTarget.SOURCE) },
@@ -331,4 +370,27 @@ private fun openTtsSettings(context: Context) {
         "打不开语音设置，请手动在「设置」里搜索“文字转语音”",
         Toast.LENGTH_LONG
     ).show()
+}
+
+private fun hasMic(context: Context): Boolean =
+    ContextCompat.checkSelfPermission(
+        context, Manifest.permission.RECORD_AUDIO
+    ) == PackageManager.PERMISSION_GRANTED
+
+/** 查询系统注册的服务包名，用于诊断 */
+private fun queryServices(context: Context, action: String): List<String> =
+    runCatching {
+        context.packageManager.queryIntentServices(Intent(action), 0)
+            .mapNotNull { it.serviceInfo?.packageName }
+            .distinct()
+    }.getOrDefault(emptyList())
+
+private fun openAppSettings(context: Context) {
+    val intent = Intent(
+        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+        Uri.parse("package:" + context.packageName)
+    )
+    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching { context.startActivity(intent) }
+        .onFailure { Toast.makeText(context, "打不开应用设置", Toast.LENGTH_SHORT).show() }
 }

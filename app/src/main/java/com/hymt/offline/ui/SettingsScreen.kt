@@ -48,7 +48,11 @@ fun SettingsScreen(
     onToggleAutoSpeak: () -> Unit,
     onUseHistory: (HistoryItem) -> Unit,
     onClearHistory: () -> Unit,
-    onDeleteModel: () -> Unit
+    onDeleteModel: () -> Unit,
+    micGranted: Boolean,
+    asrServices: List<String>,
+    ttsEngines: List<String>,
+    onOpenAppSettings: () -> Unit
 ) {
     Column(
         Modifier
@@ -196,6 +200,39 @@ fun SettingsScreen(
                     }
                 }
             }
+
+            Spacer(Modifier.height(12.dp))
+
+            SettingsCard {
+                Text(
+                    text = "诊断信息",
+                    color = TextDim,
+                    fontSize = 12.sp,
+                    letterSpacing = 1.sp
+                )
+                Spacer(Modifier.height(8.dp))
+                DiagRow(
+                    label = "麦克风权限",
+                    value = if (micGranted) "已授权" else "未授权",
+                    actionLabel = if (micGranted) null else "去设置",
+                    action = onOpenAppSettings
+                )
+                DiagRow(
+                    label = "语音识别服务",
+                    value = if (asrServices.isEmpty()) "0 个（系统未提供）" else "${asrServices.size} 个",
+                    actionLabel = null,
+                    action = null
+                )
+                if (asrServices.isNotEmpty()) ServiceList(asrServices)
+                Spacer(Modifier.height(6.dp))
+                DiagRow(
+                    label = "语音引擎",
+                    value = if (ttsEngines.isEmpty()) "0 个" else "${ttsEngines.size} 个",
+                    actionLabel = null,
+                    action = null
+                )
+                if (ttsEngines.isNotEmpty()) ServiceList(ttsEngines)
+            }
         }
     }
 }
@@ -241,4 +278,40 @@ private fun HistoryRow(item: HistoryItem, onClick: () -> Unit) {
             )
         }
     }
+}
+
+@Composable
+private fun DiagRow(label: String, value: String, actionLabel: String?, action: (() -> Unit)?) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, color = TextDim, fontSize = 12.sp)
+        Spacer(Modifier.weight(1f))
+        if (actionLabel != null && action != null) {
+            Text(
+                text = value + " · " + actionLabel,
+                color = Mint,
+                fontSize = 12.sp,
+                modifier = Modifier
+                    .clip(ChipShape)
+                    .clickable(onClick = action)
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            )
+        } else {
+            Text(value, color = TextMain, fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
+private fun ServiceList(items: List<String>) {
+    Text(
+        text = items.joinToString("\n"),
+        color = TextFaint,
+        fontSize = 10.sp,
+        lineHeight = 14.sp
+    )
 }
