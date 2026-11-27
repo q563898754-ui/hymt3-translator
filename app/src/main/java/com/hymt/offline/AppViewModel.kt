@@ -13,6 +13,7 @@ import com.hymt.offline.data.Languages
 import com.hymt.offline.data.ModelManager
 import com.hymt.offline.llm.HyMtEngine
 import com.hymt.offline.llm.PromptBuilder
+import com.hymt.offline.speech.EdgeTts
 import com.hymt.offline.speech.Speaker
 import com.hymt.offline.speech.VoiceInput
 import kotlinx.coroutines.Dispatchers
@@ -76,6 +77,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var prepareJob: Job? = null
     private var voice: VoiceInput? = null
     private var speaker: Speaker? = null
+    private var edgeTts: EdgeTts? = null
+    private var cloudNoticeShown = false
     private var lastProgressEmit = 0L
 
     init {
@@ -393,21 +396,40 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun ensureSpeaker(): Speaker = speaker ?: Speaker(getApplication()).also { tts ->
         tts.onIssue = { issue ->
-            val msg = when (issue) {
-                is Speaker.Issue.NoEngine -> {
-                    val detail = if (issue.detected.isEmpty()) {
-                        "未检测到任何 TTS 引擎"
-                    } else {
-                        "检测到：" + issue.detected.joinToString()
-                    }
-                    "系统里没有可用的语音合成引擎（$detail）。请安装一个语音合成应用（如「Google 文字转语音」或厂商语音服务），再到系统设置中启用。"
-                }
-                is Speaker.Issue.NoVoice ->
-                    "当前语音引擎缺少「${issue.languageName}」的语音包。请到系统「文字转语音」设置中下载该语言的语音数据后重试。"
+            // 本地引擎没有该语言时，自动降级到 Edge 云端语音（个人自用）
+            val reason = when (issue) {
+                is Speaker.Issue.NoEngine -> "系统缺少语音引擎"
+                is Speaker.Issue.NoVoice -> "系统缺少「${issue.languageName}」语音包"
             }
-            _state.update { it.copy(speechIssue = msg) }
+            speakViaEdge(reason)
         }
         speaker = tts
+    }
+
+    /** Edge TTS 兜底：免费、无需 Key，但属非官方接口，失败时给出明确提示 */
+    private fun speakViaEdge(reason: String) {
+        val current = _state.value
+        val text = current.output
+        if (text.isBlank()) {
+            _state.update { it.copy(speechIssue = "$reason，且当前没有可朗读的译文") }
+            return
+        }
+        val langCode = Languages.of(current.targetLang)?.code ?: "en"
+        val cloud = edgeTts ?: EdgeTts(getApplication()).also { edgeTts = it }
+        viewModelScope.launch {
+            runCatching { cloud.speak(text, langCode) }
+                .onSuccess {
+                    if (!cloudNoticeShown) {
+                        cloudNoticeShown = true
+                        _state.update { it.copy(message = "$reason，已改用 Edge 云端语音朗读") }
+                    }
+                }
+                .onFailure { e ->
+                    _state.update {
+                        it.copy(speechIssue = "$reason，云端语音也失败：${e.message ?: "未知错误"}")
+                    }
+                }
+        }
     }
 
     fun dismissSpeechIssue() {
@@ -434,6 +456,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         super.onCleared()
         voice?.release()
         speaker?.release()
+        edgeTts?.release()
         engine.close()
     }
 
